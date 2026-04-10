@@ -1,0 +1,103 @@
+:root{
+    --orange:#ff8a00;
+    --orange-dark:#e67300;
+    --card-bg: rgba(255,255,255,0.95);
+    --font-stack: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+body{
+    font-family: var(--font-stack);
+    background-color: #f5f6fa;
+    margin:0;
+    padding:0;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+}
+
+
+.login-hero{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background-image: url('/images/fondo.png');
+    background-repeat:no-repeat;
+    background-position:center;
+    background-size:cover;
+    padding:3rem 1rem;
+}
+
+
+.login-card{
+    width:420px;
+    max-width:95%;
+    background:var(--card-bg);
+    border-radius:8px;
+    box-shadow:0 6px 24px rgba(0,0,0,0.08);
+    padding:1.6rem;
+    text-align:center;
+    border:1px solid rgba(0,0,0,0.04);
+}
+
+
+.login-card .logo{
+    width:120px;
+    height:auto;
+    margin:0 auto 12px;
+}
+
+
+.login-card h5{
+    margin-bottom:1rem;
+    font-weight:700;
+    letter-spacing:0.6px;
+}
+
+
+.input-group .input-group-text{
+    background:transparent;
+    border-right:0;
+    border-radius:6px 0 0 6px;
+    color:#9aa1a8;
+    border-color:#dfe4e8;
+}
+.form-control{
+    border-left:0;
+    border-radius:0 6px 6px 0;
+    border-color:#dfe4e8;
+}
+
+
+.form-control:focus{
+    box-shadow:none;
+    border-color:var(--orange);
+}
+
+
+.btn-orange{
+    background: linear-gradient(135deg, var(--orange), var(--orange-dark));
+    border-color: var(--orange-dark);
+    color:#fff;
+    font-weight:700;
+    border-radius:8px;
+    padding:9px 20px;
+    box-shadow: 0 2px 8px rgba(255,138,0,0.28);
+}
+
+
+.login-card .small-link{
+    font-size:0.9rem;
+    color:#6c757d;
+    margin-top:10px;
+    display:block;
+}
+
+
+.alert-custom{
+    background:#fff0f0;
+    color:#b00020;
+    border:1px solid rgba(176,0,32,0.08);
+    padding:0.6rem 0.9rem;
+    border-radius:6px;
+    margin-bottom:1rem;
+}

@@ -1,0 +1,21 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Laravel (php artisan serve)",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["artisan", "serve", "--port=8000"],
+      "port": 8000,
+      "cwd": "C:/Users/User/Documents/Proyectos/DracoCert/DracoCert",
+      "description": "Laravel backend — http://localhost:8000"
+    },
+    {
+      "name": "Vite (npm run dev)",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js", "run", "dev"],
+      "port": 5173,
+      "cwd": "C:/Users/User/Documents/Proyectos/DracoCert/DracoCert",
+      "description": "Vite HMR dev server — http://localhost:5173"
+    }
+  ]
+}
