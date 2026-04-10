@@ -1,6 +1,6 @@
 /.phpunit.cache
 /DracoCerft
-.claude/settings.local.json
+.claude/
 /node_modules
 /public/build
 /public/hot
