@@ -84,59 +84,78 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/api/roles', [RoleController::class, 'index']);
     Route::get('/api/estados', [EstadoController::class, 'index']);
 
-    // Documentos API
+    // ── Documentos API — lectura (todos los roles autenticados) ───
     Route::get('/api/documentos/folders', [DocumentoController::class, 'folders']);
     Route::get('/api/documentos', [DocumentoController::class, 'index']);
-    Route::post('/api/documentos/subir', [DocumentoController::class, 'store']);
     Route::get('/api/documentos/{id}/descargar', [DocumentoController::class, 'download'])->whereNumber('id');
     Route::get('/api/documentos/{id}/versiones/{vid}/descargar', [DocumentoController::class, 'downloadVersion'])->whereNumber(['id', 'vid']);
     Route::get('/api/documentos/{id}', [DocumentoController::class, 'show'])->whereNumber('id');
-    Route::delete('/api/documentos/{id}', [DocumentoController::class, 'destroy'])->whereNumber('id');
-    Route::post('/api/documentos/{id}/versiones', [DocumentoController::class, 'storeVersion'])->whereNumber('id');
 
-    // Capacitaciones API — recursos ANTES de {id} para evitar conflicto
+    // ── Documentos API — escritura y papelera (solo Administrador) ──
+    Route::middleware('role:Administrador')->group(function () {
+        Route::post('/api/documentos/subir', [DocumentoController::class, 'store']);
+        Route::delete('/api/documentos/{id}', [DocumentoController::class, 'destroy'])->whereNumber('id');
+        Route::post('/api/documentos/{id}/versiones', [DocumentoController::class, 'storeVersion'])->whereNumber('id');
+        Route::get('/api/documentos/papelera', [DocumentoController::class, 'trash']);
+    });
+
+    // ── Capacitaciones API — lectura y resultados (todos los roles) ──
+    // Recursos y detalle ANTES de {id} para evitar conflicto de rutas
     Route::get('/api/capacitaciones', [CapacitacionController::class, 'index']);
-    Route::post('/api/capacitaciones', [CapacitacionController::class, 'store']);
     Route::get('/api/capacitaciones/{id}/recursos', [CapacitacionController::class, 'recursos'])->whereNumber('id');
-    Route::post('/api/capacitaciones/{id}/recursos', [CapacitacionController::class, 'storeRecurso'])->whereNumber('id');
     Route::get('/api/capacitaciones/{id}/recursos/{recursoId}/descargar', [CapacitacionController::class, 'downloadRecurso'])->whereNumber('id')->whereNumber('recursoId');
-    Route::delete('/api/capacitaciones/{id}/recursos/{recursoId}', [CapacitacionController::class, 'destroyRecurso'])->whereNumber('id')->whereNumber('recursoId');
+    Route::post('/api/capacitaciones/{id}/recursos/{recursoId}/resultado', [CapacitacionController::class, 'guardarResultado'])->whereNumber('id')->whereNumber('recursoId');
+    Route::get('/api/capacitaciones/{id}/recursos/{recursoId}/resultado', [CapacitacionController::class, 'obtenerResultados'])->whereNumber('id')->whereNumber('recursoId');
+    Route::get('/api/capacitaciones/{id}/mis-resultados', [CapacitacionController::class, 'misResultados'])->whereNumber('id');
     Route::get('/api/capacitaciones/{id}/descargar', [CapacitacionController::class, 'download'])->whereNumber('id');
     Route::get('/api/capacitaciones/{id}', [CapacitacionController::class, 'show'])->whereNumber('id');
-    Route::delete('/api/capacitaciones/{id}', [CapacitacionController::class, 'destroy'])->whereNumber('id');
 
-    // Auditoría: normas, asignaciones, hallazgos y reportes
+    // ── Capacitaciones API — escritura (solo Administrador) ───────
+    Route::middleware('role:Administrador')->group(function () {
+        Route::post('/api/capacitaciones', [CapacitacionController::class, 'store']);
+        Route::post('/api/capacitaciones/{id}/recursos', [CapacitacionController::class, 'storeRecurso'])->whereNumber('id');
+        Route::delete('/api/capacitaciones/{id}/recursos/{recursoId}', [CapacitacionController::class, 'destroyRecurso'])->whereNumber('id')->whereNumber('recursoId');
+        Route::delete('/api/capacitaciones/{id}', [CapacitacionController::class, 'destroy'])->whereNumber('id');
+    });
+
+    // ── Normas ISO — lectura y estadísticas (todos los roles) ────
     Route::get('/api/normas', [AuditoriaController::class, 'listNormas'])->name('api.normas');
-    Route::post('/api/normas', [AuditoriaController::class, 'storeNorma'])->name('api.normas.store');
-    Route::put('/api/normas/{id}', [AuditoriaController::class, 'updateNorma'])->whereNumber('id')->name('api.normas.update');
-    Route::delete('/api/normas/{id}', [AuditoriaController::class, 'destroyNorma'])->whereNumber('id')->name('api.normas.destroy');
-    Route::delete('/api/documentos/{docId}/normas/{normaId}', [AuditoriaController::class, 'unassignNorma'])->whereNumber(['docId', 'normaId'])->name('api.documentos.normas.remove');
     Route::get('/api/auditoria/compliance', [AuditoriaController::class, 'complianceStats'])->name('api.auditoria.compliance');
 
-    // Auditorías CRUD
+    // ── Normas ISO — escritura (solo Administrador) ───────────────
+    Route::middleware('role:Administrador')->group(function () {
+        Route::post('/api/normas', [AuditoriaController::class, 'storeNorma'])->name('api.normas.store');
+        Route::put('/api/normas/{id}', [AuditoriaController::class, 'updateNorma'])->whereNumber('id')->name('api.normas.update');
+        Route::delete('/api/normas/{id}', [AuditoriaController::class, 'destroyNorma'])->whereNumber('id')->name('api.normas.destroy');
+        Route::delete('/api/documentos/{docId}/normas/{normaId}', [AuditoriaController::class, 'unassignNorma'])->whereNumber(['docId', 'normaId'])->name('api.documentos.normas.remove');
+    });
+
+    // ── Auditorías — lectura (todos los roles autenticados) ───────
     Route::get('/api/auditorias', [AuditoriaController::class, 'listAuditorias'])->name('api.auditorias.list');
-    Route::post('/api/auditorias', [AuditoriaController::class, 'storeAuditoria'])->name('api.auditorias.store');
-    Route::delete('/api/auditorias/{id}', [AuditoriaController::class, 'destroyAuditoria'])->whereNumber('id')->name('api.auditorias.destroy');
-
-    // Vinculaciones documento-norma y auditoría-documento
-    Route::post('/auditoria/norma', [AuditoriaController::class, 'storeNorma'])->name('auditoria.norma.store');
-    Route::post('/auditoria/documento/{id}/assign-norma', [AuditoriaController::class, 'assignNorma'])->whereNumber('id')->name('auditoria.documento.assign_norma');
-    Route::post('/auditoria/{id}/attach-doc', [AuditoriaController::class, 'attachDocumentoToAuditoria'])->whereNumber('id')->name('auditoria.attach_doc');
-
-    // Hallazgos
     Route::get('/auditoria/hallazgos', [AuditoriaController::class, 'listHallazgos'])->name('auditoria.hallazgos.list');
-    Route::post('/auditoria/hallazgos', [AuditoriaController::class, 'storeHallazgo'])->name('auditoria.hallazgos.store');
-    Route::put('/auditoria/hallazgos/{id}', [AuditoriaController::class, 'updateHallazgo'])->whereNumber('id')->name('auditoria.hallazgos.update');
-    Route::delete('/auditoria/hallazgos/{id}', [AuditoriaController::class, 'deleteHallazgo'])->whereNumber('id')->name('auditoria.hallazgos.delete');
-
-    // Evaluación de cláusulas ISO por auditoría
     Route::get('/api/auditorias/{auditoriaId}/evaluacion/{normaId}', [AuditoriaController::class, 'getEvaluacion'])->whereNumber(['auditoriaId', 'normaId'])->name('api.evaluacion.get');
-    Route::post('/api/auditorias/{auditoriaId}/evaluacion', [AuditoriaController::class, 'saveEvaluacion'])->whereNumber('auditoriaId')->name('api.evaluacion.save');
     Route::get('/api/auditorias/{auditoriaId}/evaluacion-resumen', [AuditoriaController::class, 'resumenEvaluacion'])->whereNumber('auditoriaId')->name('api.evaluacion.resumen');
-    Route::post('/api/auditorias/{auditoriaId}/finalizar', [AuditoriaController::class, 'finalizarAuditoria'])->whereNumber('auditoriaId')->name('api.auditoria.finalizar');
-
-    // Reporte de auditoría (datos JSON para cliente)
     Route::get('/auditoria/{id}/pdf', [AuditoriaController::class, 'generatePdf'])->whereNumber('id')->name('auditoria.pdf');
+
+    // ── Auditorías — escritura (Administrador y Auditor) ─────────
+    Route::middleware('role:Administrador,Auditor')->group(function () {
+        Route::post('/api/auditorias', [AuditoriaController::class, 'storeAuditoria'])->name('api.auditorias.store');
+        Route::delete('/api/auditorias/{id}', [AuditoriaController::class, 'destroyAuditoria'])->whereNumber('id')->name('api.auditorias.destroy');
+
+        // Vinculaciones documento-norma y auditoría-documento
+        Route::post('/auditoria/norma', [AuditoriaController::class, 'storeNorma'])->name('auditoria.norma.store');
+        Route::post('/auditoria/documento/{id}/assign-norma', [AuditoriaController::class, 'assignNorma'])->whereNumber('id')->name('auditoria.documento.assign_norma');
+        Route::post('/auditoria/{id}/attach-doc', [AuditoriaController::class, 'attachDocumentoToAuditoria'])->whereNumber('id')->name('auditoria.attach_doc');
+
+        // Hallazgos — escritura
+        Route::post('/auditoria/hallazgos', [AuditoriaController::class, 'storeHallazgo'])->name('auditoria.hallazgos.store');
+        Route::put('/auditoria/hallazgos/{id}', [AuditoriaController::class, 'updateHallazgo'])->whereNumber('id')->name('auditoria.hallazgos.update');
+        Route::delete('/auditoria/hallazgos/{id}', [AuditoriaController::class, 'deleteHallazgo'])->whereNumber('id')->name('auditoria.hallazgos.delete');
+
+        // Evaluación y cierre de auditoría
+        Route::post('/api/auditorias/{auditoriaId}/evaluacion', [AuditoriaController::class, 'saveEvaluacion'])->whereNumber('auditoriaId')->name('api.evaluacion.save');
+        Route::post('/api/auditorias/{auditoriaId}/finalizar', [AuditoriaController::class, 'finalizarAuditoria'])->whereNumber('auditoriaId')->name('api.auditoria.finalizar');
+    });
 
     // ─── Reportes (PDF + Excel) ─────────────────────────────────
     Route::get('/reportes/pdf/cumplimiento',  [ReporteController::class, 'pdfCumplimiento'])->name('reportes.pdf.cumplimiento');
