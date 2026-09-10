@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Models\ActivityLog;
 use App\Mail\AuditoriaResultadoAlert;
+use App\Http\Controllers\DashboardController;
 
 class AuditoriaController extends Controller
 {
@@ -332,6 +333,7 @@ class AuditoriaController extends Controller
             ]));
 
             ActivityLog::record('crear', 'auditoria', "Auditoría creada: {$data['titulo']}");
+            DashboardController::clearStatsCache();
 
             $a = DB::table('auditorias')->where('id', $id)->first();
             return response()->json(['ok' => true, 'auditoria' => $a], 201);
@@ -349,6 +351,7 @@ class AuditoriaController extends Controller
             DB::table('auditoria_documento')->where('auditoria_id', $id)->delete();
             DB::table('auditorias')->where('id', $id)->delete();
             ActivityLog::record('eliminar', 'auditoria', "Auditoría eliminada ID: $id");
+            DashboardController::clearStatsCache();
             return response()->json(['ok' => true]);
         } catch (\Exception $e) {
             Log::error('destroyAuditoria: ' . $e->getMessage());
@@ -402,9 +405,18 @@ class AuditoriaController extends Controller
     {
         try {
             $data = $request->validate([
-                'titulo'      => 'required|string|max:255',
-                'descripcion' => 'nullable|string',
-                'prioridad'   => 'nullable|in:alta,media,baja',
+                'titulo'                => 'required|string|max:255',
+                'descripcion'           => 'nullable|string',
+                'prioridad'             => 'nullable|in:alta,media,baja',
+                // Campos CAPA
+                'causa_raiz'            => 'nullable|string',
+                'plan_accion'           => 'nullable|string',
+                'fecha_limite'          => 'nullable|date',
+                'responsable'           => 'nullable|string|max:255',
+                'estado_accion'         => 'nullable|in:pendiente,en_progreso,completado,verificado',
+                'evidencias'            => 'nullable|string',
+                'fecha_verificacion'    => 'nullable|date',
+                'resultado_verificacion'=> 'nullable|string',
             ]);
 
             $id = DB::table('hallazgos')->insertGetId(array_merge($data, [
@@ -414,6 +426,7 @@ class AuditoriaController extends Controller
             ]));
 
             ActivityLog::record('crear', 'auditoria', "Hallazgo creado: {$data['titulo']}");
+            DashboardController::clearStatsCache();
 
             $h = DB::table('hallazgos')->where('id', $id)->first();
             return response()->json(['ok' => true, 'hallazgo' => $h]);
@@ -429,9 +442,18 @@ class AuditoriaController extends Controller
     {
         try {
             $data = $request->validate([
-                'titulo'      => 'required|string|max:255',
-                'descripcion' => 'nullable|string',
-                'prioridad'   => 'nullable|in:alta,media,baja',
+                'titulo'                => 'required|string|max:255',
+                'descripcion'           => 'nullable|string',
+                'prioridad'             => 'nullable|in:alta,media,baja',
+                // Campos CAPA
+                'causa_raiz'            => 'nullable|string',
+                'plan_accion'           => 'nullable|string',
+                'fecha_limite'          => 'nullable|date',
+                'responsable'           => 'nullable|string|max:255',
+                'estado_accion'         => 'nullable|in:pendiente,en_progreso,completado,verificado',
+                'evidencias'            => 'nullable|string',
+                'fecha_verificacion'    => 'nullable|date',
+                'resultado_verificacion'=> 'nullable|string',
             ]);
 
             DB::table('hallazgos')->where('id', $id)->update(array_merge($data, ['updated_at' => now()]));
@@ -451,6 +473,7 @@ class AuditoriaController extends Controller
         try {
             DB::table('hallazgos')->where('id', $id)->delete();
             ActivityLog::record('eliminar', 'auditoria', "Hallazgo eliminado ID: $id");
+            DashboardController::clearStatsCache();
             return response()->json(['ok' => true]);
         } catch (\Exception $e) {
             Log::error('deleteHallazgo: ' . $e->getMessage());

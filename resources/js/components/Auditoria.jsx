@@ -669,7 +669,11 @@ export default function Auditoria() {
     /* —— formularios —— */
     const [normaForm,     setNormaForm]     = useState({ codigo: '', descripcion: '' });
     const [auditoriaForm, setAuditoriaForm] = useState({ titulo: '', auditor: '', fecha: '', descripcion: '' });
-    const [hallazgoForm,  setHallazgoForm]  = useState({ titulo: '', descripcion: '', prioridad: 'media' });
+    const [hallazgoForm,  setHallazgoForm]  = useState({
+        titulo: '', descripcion: '', prioridad: 'media',
+        causa_raiz: '', plan_accion: '', fecha_limite: '', responsable: '',
+        estado_accion: 'pendiente', evidencias: '', fecha_verificacion: '', resultado_verificacion: '',
+    });
     const [editingHallazgo, setEditingHallazgo] = useState(null);
 
     /* —— edición de norma —— */
@@ -904,13 +908,23 @@ export default function Auditoria() {
      ══════════════════════════════════════════════════════════════ */
     const openNewHallazgo = () => {
         setEditingHallazgo(null);
-        setHallazgoForm({ titulo: '', descripcion: '', prioridad: 'media' });
+        setHallazgoForm({
+            titulo: '', descripcion: '', prioridad: 'media',
+            causa_raiz: '', plan_accion: '', fecha_limite: '', responsable: '',
+            estado_accion: 'pendiente', evidencias: '', fecha_verificacion: '', resultado_verificacion: '',
+        });
         setShowHallazgoModal(true);
     };
 
     const openEditHallazgo = (h) => {
         setEditingHallazgo(h);
-        setHallazgoForm({ titulo: h.titulo, descripcion: h.descripcion || '', prioridad: h.prioridad || 'media' });
+        setHallazgoForm({
+            titulo: h.titulo, descripcion: h.descripcion || '', prioridad: h.prioridad || 'media',
+            causa_raiz: h.causa_raiz || '', plan_accion: h.plan_accion || '',
+            fecha_limite: h.fecha_limite || '', responsable: h.responsable || '',
+            estado_accion: h.estado_accion || 'pendiente', evidencias: h.evidencias || '',
+            fecha_verificacion: h.fecha_verificacion || '', resultado_verificacion: h.resultado_verificacion || '',
+        });
         setShowHallazgoModal(true);
     };
 
@@ -1841,6 +1855,101 @@ export default function Auditoria() {
                             ))}
                         </div>
                     </Field>
+                    {/* ── Gestión de la acción correctiva (CAPA) ── */}
+                    <div style={{ margin: '24px 0 12px', padding: '14px 16px 4px', background: '#fff8e1', borderRadius: 10, border: '1px solid #ffe0b2' }}>
+                        <p style={{ margin: '0 0 14px', fontWeight: 700, fontSize: 13, color: '#e65100', display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <i className="fa fa-tasks" /> Gestión de la acción correctiva (CAPA)
+                        </p>
+                        <Field label="Causa raíz">
+                            <textarea
+                                style={{ ...inputStyle, resize: 'vertical', minHeight: 70 }}
+                                placeholder="Describe la causa raíz del hallazgo…"
+                                value={hallazgoForm.causa_raiz}
+                                onChange={e => setHallazgoForm(f => ({ ...f, causa_raiz: e.target.value }))}
+                                onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                            />
+                        </Field>
+                        <Field label="Plan de acción">
+                            <textarea
+                                style={{ ...inputStyle, resize: 'vertical', minHeight: 70 }}
+                                placeholder="Acciones correctivas o preventivas a implementar…"
+                                value={hallazgoForm.plan_accion}
+                                onChange={e => setHallazgoForm(f => ({ ...f, plan_accion: e.target.value }))}
+                                onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                            />
+                        </Field>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <Field label="Responsable">
+                                <input
+                                    style={inputStyle}
+                                    placeholder="Nombre del responsable"
+                                    value={hallazgoForm.responsable}
+                                    onChange={e => setHallazgoForm(f => ({ ...f, responsable: e.target.value }))}
+                                    onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                    onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                                />
+                            </Field>
+                            <Field label="Fecha límite">
+                                <input
+                                    type="date"
+                                    style={inputStyle}
+                                    value={hallazgoForm.fecha_limite}
+                                    onChange={e => setHallazgoForm(f => ({ ...f, fecha_limite: e.target.value }))}
+                                    onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                    onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                                />
+                            </Field>
+                        </div>
+                        <Field label="Estado de la acción">
+                            <select
+                                style={{ ...inputStyle, cursor: 'pointer' }}
+                                value={hallazgoForm.estado_accion}
+                                onChange={e => setHallazgoForm(f => ({ ...f, estado_accion: e.target.value }))}
+                                onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                            >
+                                <option value="pendiente">Pendiente</option>
+                                <option value="en_progreso">En progreso</option>
+                                <option value="completado">Completado</option>
+                                <option value="verificado">Verificado</option>
+                            </select>
+                        </Field>
+                        <Field label="Evidencias">
+                            <textarea
+                                style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }}
+                                placeholder="Evidencias de implementación (enlaces, documentos, etc.)…"
+                                value={hallazgoForm.evidencias}
+                                onChange={e => setHallazgoForm(f => ({ ...f, evidencias: e.target.value }))}
+                                onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                            />
+                        </Field>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <Field label="Fecha de verificación">
+                                <input
+                                    type="date"
+                                    style={inputStyle}
+                                    value={hallazgoForm.fecha_verificacion}
+                                    onChange={e => setHallazgoForm(f => ({ ...f, fecha_verificacion: e.target.value }))}
+                                    onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                    onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                                />
+                            </Field>
+                            <Field label="Resultado de verificación">
+                                <input
+                                    style={inputStyle}
+                                    placeholder="¿La acción fue eficaz?"
+                                    value={hallazgoForm.resultado_verificacion}
+                                    onChange={e => setHallazgoForm(f => ({ ...f, resultado_verificacion: e.target.value }))}
+                                    onFocus={e => e.target.style.borderColor = '#ff8a00'}
+                                    onBlur={e => e.target.style.borderColor = '#e0e0e0'}
+                                />
+                            </Field>
+                        </div>
+                    </div>
+
                     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
                         <button type="button" className="btn-outline" onClick={() => setShowHallazgoModal(false)}>Cancelar</button>
                         <button type="submit" className="btn-orange" disabled={saving}>
