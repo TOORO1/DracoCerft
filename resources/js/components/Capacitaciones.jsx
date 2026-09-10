@@ -23,17 +23,34 @@ function StatusBadge({ fecha }) {
 }
 
 // ─── Modal para tomar la evaluación ──────────────────────────────────────────
-function EvaluacionModal({ recurso, onClose }) {
+function EvaluacionModal({ recurso, capacitacionId, puntajeAprobatorio = 60, onClose }) {
     const form      = recurso?.formulario || {};
     const preguntas = form.preguntas || [];
 
-    const [answers,   setAnswers]   = useState({});
-    const [submitted, setSubmitted] = useState(false);
-    const [score,     setScore]     = useState(null);
+    const [answers,    setAnswers]    = useState({});
+    const [submitted,  setSubmitted]  = useState(false);
+    const [score,      setScore]      = useState(null);
+    const [saving,     setSaving]     = useState(false);
+    const [historial,  setHistorial]  = useState([]);
+    const [loadingHist,setLoadingHist]= useState(true);
+    const [tab,        setTab]        = useState('eval'); // 'eval' | 'historial'
+
+    const pAprobatorio = puntajeAprobatorio ?? 60;
+
+    // Cargar historial al abrir
+    useEffect(() => {
+        if (!capacitacionId || !recurso?.id) return;
+        axios.get(`/api/capacitaciones/${capacitacionId}/recursos/${recurso.id}/resultado`)
+            .then(res => {
+                setHistorial(res.data.resultados || []);
+            })
+            .catch(() => {})
+            .finally(() => setLoadingHist(false));
+    }, [capacitacionId, recurso?.id]);
 
     const setAnswer = (idx, val) => setAnswers(prev => ({ ...prev, [idx]: val }));
 
-    function handleSubmit() {
+    async function handleSubmit() {
         const sin = preguntas.findIndex((p, i) => p.tipo !== 'texto_libre' && answers[i] === undefined);
         if (sin !== -1) return Swal.fire('Atención', `Responde la pregunta ${sin + 1}`, 'warning');
 
@@ -45,8 +62,28 @@ function EvaluacionModal({ recurso, onClose }) {
         });
         const total = preguntas.filter(p => p.tipo !== 'texto_libre').length;
         const pct   = total > 0 ? Math.round((correct / total) * 100) : 100;
-        setScore({ correct, total, pct });
+        const aprobado = pct >= pAprobatorio;
+
+        setScore({ correct, total, pct, aprobado });
         setSubmitted(true);
+
+        // Guardar en backend
+        setSaving(true);
+        try {
+            await axios.post(`/api/capacitaciones/${capacitacionId}/recursos/${recurso.id}/resultado`, {
+                puntaje:   pct,
+                correctas: correct,
+                total:     total,
+                respuestas: answers,
+            });
+            // Recargar historial
+            const res = await axios.get(`/api/capacitaciones/${capacitacionId}/recursos/${recurso.id}/resultado`);
+            setHistorial(res.data.resultados || []);
+        } catch {
+            Swal.fire('Aviso', 'El resultado no se pudo guardar en el servidor.', 'warning');
+        } finally {
+            setSaving(false);
+        }
     }
 
     function reintentar() { setAnswers({}); setSubmitted(false); setScore(null); }
@@ -57,119 +94,231 @@ function EvaluacionModal({ recurso, onClose }) {
         return Number(answers[i]) === Number(p.correcta);
     };
 
+    const mejorPuntaje = historial.length > 0 ? Math.max(...historial.map(r => r.puntaje)) : null;
+    // ¿Ya tiene al menos un intento aprobado en el historial?
+    const yaAprobado   = !loadingHist && historial.some(r => r.aprobado);
+
     return (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:3000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-            <div style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:680, maxHeight:'92vh', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.3)' }}>
+            <div style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:700, maxHeight:'92vh', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.3)' }}>
 
                 {/* Header */}
-                <div style={{ padding:'16px 20px', borderBottom:'1px solid #f0f0f0', display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
-                    <div>
-                        <h3 style={{ margin:0, fontSize:16, fontWeight:800, color:'#1a1a2e' }}>
-                            <i className="fa fa-clipboard-list" style={{ color:'#2e7d32', marginRight:8 }}></i>
-                            {recurso.titulo}
-                        </h3>
-                        {form.instrucciones && (
-                            <p style={{ margin:'6px 0 0', fontSize:13, color:'#666', lineHeight:1.5 }}>{form.instrucciones}</p>
+                <div style={{ padding:'16px 20px', borderBottom:'1px solid #f0f0f0' }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
+                        <div>
+                            <h3 style={{ margin:0, fontSize:16, fontWeight:800, color:'#1a1a2e' }}>
+                                <i className="fa fa-clipboard-list" style={{ color:'#2e7d32', marginRight:8 }}></i>
+                                {recurso.titulo}
+                            </h3>
+                            {form.instrucciones && (
+                                <p style={{ margin:'4px 0 0', fontSize:12, color:'#666', lineHeight:1.5 }}>{form.instrucciones}</p>
+                            )}
+                        </div>
+                        <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#888', marginLeft:12, flexShrink:0 }}>
+                            <i className="fa fa-times"></i>
+                        </button>
+                    </div>
+                    {/* Tabs */}
+                    <div style={{ display:'flex', gap:4 }}>
+                        {[['eval','fa-clipboard-list','Evaluación'],['historial','fa-history','Mis intentos']].map(([k,ic,lbl]) => (
+                            <button key={k} onClick={() => setTab(k)} style={{
+                                padding:'6px 14px', border:'none', borderRadius:8, cursor:'pointer', fontSize:12, fontWeight:700,
+                                background: tab===k ? '#2e7d32' : '#f0f0f0',
+                                color:      tab===k ? '#fff'    : '#666',
+                                transition: 'all 0.15s',
+                            }}>
+                                <i className={`fa ${ic}`} style={{ marginRight:5 }}></i>{lbl}
+                                {k === 'historial' && historial.length > 0 && (
+                                    <span style={{ marginLeft:6, background:'rgba(255,255,255,0.25)', borderRadius:99, padding:'1px 6px', fontSize:10 }}>
+                                        {historial.length}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                        {/* Puntaje aprobatorio badge */}
+                        <span style={{ marginLeft:'auto', background:'#e3f2fd', color:'#1565c0', borderRadius:8, padding:'5px 12px', fontSize:11, fontWeight:700, alignSelf:'center' }}>
+                            <i className="fa fa-star" style={{ marginRight:4 }}></i>Aprobatorio: {pAprobatorio}%
+                        </span>
+                        {mejorPuntaje !== null && (
+                            <span style={{ background: mejorPuntaje >= pAprobatorio ? '#e8f5e9':'#fdecea', color: mejorPuntaje >= pAprobatorio ? '#2e7d32':'#c62828', borderRadius:8, padding:'5px 12px', fontSize:11, fontWeight:700, alignSelf:'center' }}>
+                                <i className="fa fa-trophy" style={{ marginRight:4 }}></i>Mejor: {mejorPuntaje}%
+                            </span>
                         )}
                     </div>
-                    <button onClick={onClose} style={{ background:'none', border:'none', fontSize:20, cursor:'pointer', color:'#888', marginLeft:12, flexShrink:0 }}>
-                        <i className="fa fa-times"></i>
-                    </button>
                 </div>
 
-                {/* Resultado */}
-                {submitted && score && (
-                    <div style={{ padding:'14px 20px', background: score.pct >= 60 ? '#e8f5e9' : '#fdecea', borderBottom:'1px solid #f0f0f0', textAlign:'center' }}>
-                        <div style={{ fontSize:40, fontWeight:900, color: score.pct >= 60 ? '#2e7d32' : '#c62828', lineHeight:1 }}>{score.pct}%</div>
-                        <div style={{ fontSize:13, color:'#555', marginTop:4 }}>{score.correct} de {score.total} correctas</div>
-                        <div style={{ fontSize:13, fontWeight:700, marginTop:2, color: score.pct >= 80 ? '#2e7d32' : score.pct >= 60 ? '#f57f17' : '#c62828' }}>
-                            {score.pct >= 80 ? '¡Excelente!' : score.pct >= 60 ? 'Aprobado ✓' : 'No aprobado — revisa tus respuestas'}
+                {/* TAB: EVALUACIÓN */}
+                {tab === 'eval' && (<>
+                    {/* Banner: ya aprobado previamente */}
+                    {yaAprobado && !submitted && (
+                        <div style={{ padding:'20px', background:'#e8f5e9', borderBottom:'1px solid #c8e6c9', textAlign:'center' }}>
+                            <div style={{ fontSize:32, color:'#2e7d32', marginBottom:6 }}>
+                                <i className="fa fa-check-circle"></i>
+                            </div>
+                            <div style={{ fontWeight:800, fontSize:15, color:'#2e7d32' }}>¡Ya aprobaste esta evaluación!</div>
+                            <div style={{ fontSize:13, color:'#555', marginTop:4 }}>
+                                Mejor puntaje obtenido: <strong>{mejorPuntaje}%</strong> — mínimo requerido: <strong>{pAprobatorio}%</strong>
+                            </div>
+                            <button onClick={() => setTab('historial')} style={{ marginTop:10, padding:'7px 16px', borderRadius:8, border:'none', background:'#2e7d32', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                                <i className="fa fa-history" style={{ marginRight:5 }}></i>Ver mis intentos
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Resultado inmediato */}
+                    {submitted && score && (
+                        <div style={{ padding:'12px 20px', background: score.aprobado ? '#e8f5e9' : '#fdecea', borderBottom:'1px solid #f0f0f0', textAlign:'center' }}>
+                            <div style={{ fontSize:38, fontWeight:900, color: score.aprobado ? '#2e7d32' : '#c62828', lineHeight:1 }}>{score.pct}%</div>
+                            <div style={{ fontSize:13, color:'#555', marginTop:4 }}>{score.correct} de {score.total} correctas</div>
+                            <div style={{ fontSize:13, fontWeight:700, marginTop:2, color: score.aprobado ? '#2e7d32' : '#c62828' }}>
+                                {score.pct >= 90 ? '¡Excelente!' : score.aprobado ? '¡Aprobado ✓' : `No aprobado — necesitas ${pAprobatorio}% mínimo`}
+                            </div>
+                            {saving && <div style={{ fontSize:11, color:'#888', marginTop:4 }}><i className="fa fa-spinner fa-spin"></i> Guardando resultado…</div>}
+                            {!saving && <div style={{ fontSize:11, color:'#aaa', marginTop:4 }}><i className="fa fa-check-circle"></i> Resultado guardado</div>}
+                        </div>
+                    )}
+
+                    {/* Preguntas */}
+                    <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
+                        {preguntas.length === 0 && (
+                            <div style={{ textAlign:'center', color:'#bbb', padding:48 }}>
+                                <i className="fa fa-clipboard" style={{ fontSize:36, display:'block', marginBottom:12 }}></i>
+                                Este formulario aún no tiene preguntas.
+                            </div>
+                        )}
+                        {preguntas.map((p, i) => {
+                            const ok = submitted ? isCorrect(p, i) : null;
+                            const border = submitted && p.tipo !== 'texto_libre' ? (ok ? '#4caf50' : '#f44336') : '#e8e8e8';
+                            const bgCard = submitted && p.tipo !== 'texto_libre' ? (ok ? '#f1f8e9' : '#fff5f5') : '#fafbfc';
+                            return (
+                                <div key={i} style={{ marginBottom:16, padding:16, borderRadius:10, border:`2px solid ${border}`, background:bgCard }}>
+                                    <div style={{ fontWeight:700, fontSize:14, marginBottom:10, color:'#1a1a2e', display:'flex', alignItems:'center', gap:8 }}>
+                                        <span style={{ background:'#ff8a00', color:'#fff', borderRadius:99, width:22, height:22, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, flexShrink:0 }}>{i+1}</span>
+                                        {p.texto}
+                                        {submitted && p.tipo !== 'texto_libre' && (
+                                            <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color: ok ? '#2e7d32' : '#c62828', flexShrink:0 }}>
+                                                <i className={`fa ${ok ? 'fa-check-circle' : 'fa-times-circle'}`}></i> {ok ? 'Correcto' : 'Incorrecto'}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {p.tipo === 'opcion_multiple' && (
+                                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                            {(p.opciones || []).map((op, oi) => {
+                                                const sel  = Number(answers[i]) === oi;
+                                                const good = submitted && Number(p.correcta) === oi;
+                                                const bad  = submitted && sel && !good;
+                                                return (
+                                                    <label key={oi} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, cursor: submitted ? 'default':'pointer', background: good ? '#e8f5e9' : bad ? '#fdecea' : sel ? '#e3f2fd' : '#fff', border:`1px solid ${good ? '#4caf50' : bad ? '#f44336' : '#e0e0e0'}`, transition:'all 0.15s' }}>
+                                                        <input type="radio" name={`q_${i}`} value={oi} checked={sel} onChange={() => !submitted && setAnswer(i, oi)} disabled={submitted} style={{ accentColor:'#ff8a00' }} />
+                                                        <span style={{ fontSize:13 }}>{op}</span>
+                                                        {good && <i className="fa fa-check" style={{ marginLeft:'auto', color:'#2e7d32', fontSize:12 }}></i>}
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {p.tipo === 'verdadero_falso' && (
+                                        <div style={{ display:'flex', gap:10 }}>
+                                            {[['true','Verdadero','fa-check'],['false','Falso','fa-times']].map(([val, label, ico]) => {
+                                                const sel  = String(answers[i]) === val;
+                                                const good = submitted && String(p.correcta) === val;
+                                                const bad  = submitted && sel && !good;
+                                                return (
+                                                    <label key={val} style={{ flex:1, display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:8, cursor: submitted ? 'default':'pointer', background: good ? '#e8f5e9' : bad ? '#fdecea' : sel ? '#e3f2fd' : '#fff', border:`1px solid ${good ? '#4caf50' : bad ? '#f44336' : '#e0e0e0'}`, fontWeight:600, fontSize:13, transition:'all 0.15s' }}>
+                                                        <input type="radio" name={`q_${i}`} value={val} checked={sel} onChange={() => !submitted && setAnswer(i, val)} disabled={submitted} style={{ accentColor:'#ff8a00' }} />
+                                                        <i className={`fa ${ico}`} style={{ color: val === 'true' ? '#2e7d32':'#c62828', fontSize:12 }}></i>
+                                                        {label}
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {p.tipo === 'texto_libre' && (
+                                        <textarea rows={3} value={answers[i] || ''} onChange={e => setAnswer(i, e.target.value)} disabled={submitted}
+                                            placeholder="Escribe tu respuesta aquí..."
+                                            style={{ width:'100%', borderRadius:8, border:'1px solid #e0e0e0', padding:'8px 12px', fontSize:13, resize:'vertical', boxSizing:'border-box', fontFamily:'inherit' }} />
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{ padding:'12px 20px', borderTop:'1px solid #f0f0f0', display:'flex', justifyContent:'flex-end', gap:8 }}>
+                        <button onClick={onClose} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #ddd', background:'#fff', cursor:'pointer', fontSize:13 }}>Cerrar</button>
+                        {/* Solo mostrar "Enviar" si no está aprobado (ni ahora ni antes) y no se ha enviado aún */}
+                        {!submitted && !yaAprobado && preguntas.length > 0 && (
+                            <button onClick={handleSubmit} style={{ padding:'8px 18px', borderRadius:8, border:'none', background:'#2e7d32', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                                <i className="fa fa-paper-plane" style={{ marginRight:6 }}></i>Enviar respuestas
+                            </button>
+                        )}
+                        {/* Reintentar solo si el intento actual NO aprobó */}
+                        {submitted && !score?.aprobado && (
+                            <button onClick={reintentar} style={{ padding:'8px 18px', borderRadius:8, border:'none', background:'#ff8a00', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                                <i className="fa fa-redo" style={{ marginRight:6 }}></i>Reintentar
+                            </button>
+                        )}
+                    </div>
+                </>)}
+
+                {/* TAB: HISTORIAL */}
+                {tab === 'historial' && (
+                    <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
+                        {loadingHist ? (
+                            <div style={{ textAlign:'center', padding:48, color:'#aaa' }}>
+                                <i className="fa fa-spinner fa-spin" style={{ fontSize:24 }}></i>
+                            </div>
+                        ) : historial.length === 0 ? (
+                            <div style={{ textAlign:'center', padding:48, color:'#bbb' }}>
+                                <i className="fa fa-history" style={{ fontSize:36, display:'block', marginBottom:12 }}></i>
+                                Aún no has realizado esta evaluación.<br />
+                                <button onClick={() => setTab('eval')} style={{ marginTop:12, padding:'8px 18px', borderRadius:8, border:'none', background:'#2e7d32', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+                                    Comenzar evaluación
+                                </button>
+                            </div>
+                        ) : (
+                            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+                                <thead>
+                                    <tr style={{ background:'#f9f9f9' }}>
+                                        <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#555', fontSize:11, textTransform:'uppercase' }}>Intento</th>
+                                        <th style={{ padding:'10px 12px', textAlign:'center', fontWeight:700, color:'#555', fontSize:11, textTransform:'uppercase' }}>Puntaje</th>
+                                        <th style={{ padding:'10px 12px', textAlign:'center', fontWeight:700, color:'#555', fontSize:11, textTransform:'uppercase' }}>Correctas</th>
+                                        <th style={{ padding:'10px 12px', textAlign:'center', fontWeight:700, color:'#555', fontSize:11, textTransform:'uppercase' }}>Estado</th>
+                                        <th style={{ padding:'10px 12px', textAlign:'left', fontWeight:700, color:'#555', fontSize:11, textTransform:'uppercase' }}>Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {historial.map((r, idx) => (
+                                        <tr key={r.id} style={{ borderBottom:'1px solid #f0f0f0' }}>
+                                            <td style={{ padding:'10px 12px', color:'#aaa' }}>#{historial.length - idx}</td>
+                                            <td style={{ padding:'10px 12px', textAlign:'center', fontWeight:900, fontSize:16, color: r.aprobado ? '#2e7d32':'#c62828' }}>
+                                                {r.puntaje}%
+                                            </td>
+                                            <td style={{ padding:'10px 12px', textAlign:'center', color:'#555' }}>
+                                                {r.correctas} / {r.total}
+                                            </td>
+                                            <td style={{ padding:'10px 12px', textAlign:'center' }}>
+                                                <span style={{ background: r.aprobado ? '#e8f5e9':'#fdecea', color: r.aprobado ? '#2e7d32':'#c62828', padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:700 }}>
+                                                    <i className={`fa ${r.aprobado ? 'fa-check-circle':'fa-times-circle'}`} style={{ marginRight:4 }}></i>
+                                                    {r.aprobado ? 'Aprobado' : 'No aprobado'}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding:'10px 12px', color:'#888', fontSize:12 }}>
+                                                {r.fecha ? new Date(r.fecha).toLocaleString('es-CO', { dateStyle:'short', timeStyle:'short' }) : '—'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                        <div style={{ padding:'12px 0 0', display:'flex', justifyContent:'flex-end' }}>
+                            <button onClick={onClose} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #ddd', background:'#fff', cursor:'pointer', fontSize:13 }}>Cerrar</button>
                         </div>
                     </div>
                 )}
-
-                {/* Preguntas */}
-                <div style={{ flex:1, overflowY:'auto', padding:'16px 20px' }}>
-                    {preguntas.length === 0 && (
-                        <div style={{ textAlign:'center', color:'#bbb', padding:48 }}>
-                            <i className="fa fa-clipboard" style={{ fontSize:36, display:'block', marginBottom:12 }}></i>
-                            Este formulario aún no tiene preguntas.
-                        </div>
-                    )}
-                    {preguntas.map((p, i) => {
-                        const ok = submitted ? isCorrect(p, i) : null;
-                        const border = submitted && p.tipo !== 'texto_libre' ? (ok ? '#4caf50' : '#f44336') : '#e8e8e8';
-                        const bgCard = submitted && p.tipo !== 'texto_libre' ? (ok ? '#f1f8e9' : '#fff5f5') : '#fafbfc';
-                        return (
-                            <div key={i} style={{ marginBottom:16, padding:16, borderRadius:10, border:`2px solid ${border}`, background:bgCard }}>
-                                <div style={{ fontWeight:700, fontSize:14, marginBottom:10, color:'#1a1a2e', display:'flex', alignItems:'center', gap:8 }}>
-                                    <span style={{ background:'#ff8a00', color:'#fff', borderRadius:99, width:22, height:22, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, flexShrink:0 }}>{i+1}</span>
-                                    {p.texto}
-                                    {submitted && p.tipo !== 'texto_libre' && (
-                                        <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color: ok ? '#2e7d32' : '#c62828', flexShrink:0 }}>
-                                            <i className={`fa ${ok ? 'fa-check-circle' : 'fa-times-circle'}`}></i> {ok ? 'Correcto' : 'Incorrecto'}
-                                        </span>
-                                    )}
-                                </div>
-
-                                {p.tipo === 'opcion_multiple' && (
-                                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                                        {(p.opciones || []).map((op, oi) => {
-                                            const sel  = Number(answers[i]) === oi;
-                                            const good = submitted && Number(p.correcta) === oi;
-                                            const bad  = submitted && sel && !good;
-                                            return (
-                                                <label key={oi} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, cursor: submitted ? 'default':'pointer', background: good ? '#e8f5e9' : bad ? '#fdecea' : sel ? '#e3f2fd' : '#fff', border:`1px solid ${good ? '#4caf50' : bad ? '#f44336' : '#e0e0e0'}`, transition:'all 0.15s' }}>
-                                                    <input type="radio" name={`q_${i}`} value={oi} checked={sel} onChange={() => !submitted && setAnswer(i, oi)} disabled={submitted} style={{ accentColor:'#ff8a00' }} />
-                                                    <span style={{ fontSize:13 }}>{op}</span>
-                                                    {good && <i className="fa fa-check" style={{ marginLeft:'auto', color:'#2e7d32', fontSize:12 }}></i>}
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {p.tipo === 'verdadero_falso' && (
-                                    <div style={{ display:'flex', gap:10 }}>
-                                        {[['true','Verdadero','fa-check'],['false','Falso','fa-times']].map(([val, label, ico]) => {
-                                            const sel  = String(answers[i]) === val;
-                                            const good = submitted && String(p.correcta) === val;
-                                            const bad  = submitted && sel && !good;
-                                            return (
-                                                <label key={val} style={{ flex:1, display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:8, cursor: submitted ? 'default':'pointer', background: good ? '#e8f5e9' : bad ? '#fdecea' : sel ? '#e3f2fd' : '#fff', border:`1px solid ${good ? '#4caf50' : bad ? '#f44336' : '#e0e0e0'}`, fontWeight:600, fontSize:13, transition:'all 0.15s' }}>
-                                                    <input type="radio" name={`q_${i}`} value={val} checked={sel} onChange={() => !submitted && setAnswer(i, val)} disabled={submitted} style={{ accentColor:'#ff8a00' }} />
-                                                    <i className={`fa ${ico}`} style={{ color: val === 'true' ? '#2e7d32':'#c62828', fontSize:12 }}></i>
-                                                    {label}
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {p.tipo === 'texto_libre' && (
-                                    <textarea rows={3} value={answers[i] || ''} onChange={e => setAnswer(i, e.target.value)} disabled={submitted}
-                                        placeholder="Escribe tu respuesta aquí..."
-                                        style={{ width:'100%', borderRadius:8, border:'1px solid #e0e0e0', padding:'8px 12px', fontSize:13, resize:'vertical', boxSizing:'border-box', fontFamily:'inherit' }} />
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-
-                {/* Footer */}
-                <div style={{ padding:'12px 20px', borderTop:'1px solid #f0f0f0', display:'flex', justifyContent:'flex-end', gap:8 }}>
-                    <button onClick={onClose} style={{ padding:'8px 16px', borderRadius:8, border:'1px solid #ddd', background:'#fff', cursor:'pointer', fontSize:13 }}>Cerrar</button>
-                    {!submitted && preguntas.length > 0 && (
-                        <button onClick={handleSubmit} style={{ padding:'8px 18px', borderRadius:8, border:'none', background:'#2e7d32', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-                            <i className="fa fa-paper-plane" style={{ marginRight:6 }}></i>Enviar respuestas
-                        </button>
-                    )}
-                    {submitted && (
-                        <button onClick={reintentar} style={{ padding:'8px 18px', borderRadius:8, border:'none', background:'#ff8a00', color:'#fff', cursor:'pointer', fontSize:13, fontWeight:700 }}>
-                            <i className="fa fa-redo" style={{ marginRight:6 }}></i>Reintentar
-                        </button>
-                    )}
-                </div>
             </div>
         </div>
     );
@@ -188,6 +337,7 @@ export default function Capacitaciones() {
     const [showRecForm,  setShowRecForm]  = useState(false);
     const [showEvalModal,setShowEvalModal] = useState(false);
     const [evalRecurso,  setEvalRecurso]  = useState(null);
+    const [resultadosMap,setResultadosMap] = useState({}); // { recurso_id: { mejor_puntaje, aprobado, intentos } }
 
     // Form nueva capacitación
     const [form, setForm] = useState({ Nombre_curso:'', Fecha_Vencimiento:'', Fecha_Realizacion:'', Puntaje:'' });
@@ -228,11 +378,23 @@ export default function Capacitaciones() {
     }
 
     async function fetchRecursos(capId) {
-        if (!capId) { setRecursos([]); return; }
+        if (!capId) { setRecursos([]); setResultadosMap({}); return; }
         try {
-            const res = await axios.get(`/api/capacitaciones/${capId}/recursos`);
-            setRecursos(res.data || []);
-        } catch { setRecursos([]); }
+            const [resR, resM] = await Promise.all([
+                axios.get(`/api/capacitaciones/${capId}/recursos`),
+                axios.get(`/api/capacitaciones/${capId}/mis-resultados`),
+            ]);
+            setRecursos(resR.data || []);
+            setResultadosMap(resM.data || {});
+        } catch { setRecursos([]); setResultadosMap({}); }
+    }
+
+    async function refreshResultados(capId) {
+        if (!capId) return;
+        try {
+            const res = await axios.get(`/api/capacitaciones/${capId}/mis-resultados`);
+            setResultadosMap(res.data || {});
+        } catch { /* ignore */ }
     }
 
     // ── CRUD capacitación ────────────────────────────────────────────────────
@@ -371,7 +533,16 @@ export default function Capacitaciones() {
     return (
         <div className="gestor-app">
             {showEvalModal && evalRecurso && (
-                <EvaluacionModal recurso={evalRecurso} onClose={() => { setShowEvalModal(false); setEvalRecurso(null); }} />
+                <EvaluacionModal
+                    recurso={evalRecurso}
+                    capacitacionId={selectedCap}
+                    puntajeAprobatorio={selectedItem?.Puntaje ?? 60}
+                    onClose={() => {
+                        setShowEvalModal(false);
+                        setEvalRecurso(null);
+                        refreshResultados(selectedCap);
+                    }}
+                />
             )}
 
             {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
@@ -715,12 +886,15 @@ export default function Capacitaciones() {
                                                         <th>Título</th>
                                                         <th>Tipo</th>
                                                         <th>Descripción</th>
+                                                        <th style={{ textAlign:'center' }}>Resultado</th>
                                                         <th style={{ textAlign:'center' }}>Acciones</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     {recursos.map(r => {
-                                                        const col = TIPO_COLORS[r.tipo] || { bg:'#f5f5f5', color:'#555', icon:'fa-file' };
+                                                        const col      = TIPO_COLORS[r.tipo] || { bg:'#f5f5f5', color:'#555', icon:'fa-file' };
+                                                        const resultado = r.tipo === 'formulario' ? (resultadosMap[r.id] || null) : null;
+                                                        const pAprobMin = selectedItem?.Puntaje ?? 60;
                                                         return (
                                                             <tr key={r.id}>
                                                                 <td style={{ fontWeight:600 }}>{r.titulo}</td>
@@ -731,14 +905,35 @@ export default function Capacitaciones() {
                                                                 </td>
                                                                 <td style={{ color:'#888', fontSize:12 }}>{r.descripcion || '—'}</td>
                                                                 <td style={{ textAlign:'center' }}>
+                                                                    {resultado ? (
+                                                                        <div style={{ display:'inline-flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                                                                            <span style={{
+                                                                                background: resultado.aprobado ? '#e8f5e9' : '#fdecea',
+                                                                                color:      resultado.aprobado ? '#2e7d32' : '#c62828',
+                                                                                padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:800,
+                                                                            }}>
+                                                                                <i className={`fa ${resultado.aprobado ? 'fa-check-circle' : 'fa-times-circle'}`} style={{ marginRight:4 }}></i>
+                                                                                {resultado.mejor_puntaje}%
+                                                                            </span>
+                                                                            <span style={{ fontSize:10, color:'#bbb' }}>
+                                                                                {resultado.intentos} intento{resultado.intentos !== 1 ? 's' : ''}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : r.tipo === 'formulario' ? (
+                                                                        <span style={{ fontSize:11, color:'#ccc' }}>Sin intentos</span>
+                                                                    ) : (
+                                                                        <span style={{ color:'#ddd' }}>—</span>
+                                                                    )}
+                                                                </td>
+                                                                <td style={{ textAlign:'center' }}>
                                                                     {r.tipo === 'formulario' && r.formulario && (
                                                                         <button
                                                                             onClick={() => { setEvalRecurso(r); setShowEvalModal(true); }}
                                                                             className="action-btn"
-                                                                            title="Tomar evaluación"
-                                                                            style={{ background:'#e8f5e9', border:'1px solid #c8e6c9', borderRadius:6, cursor:'pointer', padding:'4px 8px' }}
+                                                                            title={resultado?.aprobado ? 'Ver evaluación (aprobada)' : 'Tomar evaluación'}
+                                                                            style={{ background: resultado?.aprobado ? '#e8f5e9' : '#e3f2fd', border:`1px solid ${resultado?.aprobado ? '#c8e6c9' : '#bbdefb'}`, borderRadius:6, cursor:'pointer', padding:'4px 8px' }}
                                                                         >
-                                                                            <i className="fa fa-play-circle" style={{ color:'#2e7d32' }}></i>
+                                                                            <i className={`fa ${resultado?.aprobado ? 'fa-check' : 'fa-play-circle'}`} style={{ color: resultado?.aprobado ? '#2e7d32' : '#1565c0' }}></i>
                                                                         </button>
                                                                     )}
                                                                     {r.ruta && (
@@ -754,7 +949,7 @@ export default function Capacitaciones() {
                                                         );
                                                     })}
                                                     {recursos.length === 0 && (
-                                                        <tr><td colSpan={4} className="empty">Sin recursos registrados</td></tr>
+                                                        <tr><td colSpan={5} className="empty">Sin recursos registrados</td></tr>
                                                     )}
                                                 </tbody>
                                             </table>

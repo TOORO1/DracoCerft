@@ -160,15 +160,6 @@ export default function UserModal({ visible, onClose, onSave, initial, initialTy
                             {itemType==='usuario' ? 'Gestión de accesos y permisos' : itemType==='rol' ? 'Define niveles de acceso' : 'Controla el estado de usuarios'}
                         </div>
                     </div>
-                    {/* Tipo switcher */}
-                    <div style={{ display:'flex', background:'rgba(255,255,255,.15)', borderRadius:10, padding:3, gap:2 }}>
-                        {Object.entries(TYPE_META).map(([k, m]) => (
-                            <button key={k} title={m.label} onClick={() => setItemType(k)} type="button"
-                                style={{ width:34, height:34, border:'none', borderRadius:8, cursor:'pointer', background:itemType===k?'#fff':'transparent', color:itemType===k?m.color:'rgba(255,255,255,.7)', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s' }}>
-                                <i className={`fa ${m.icon}`} />
-                            </button>
-                        ))}
-                    </div>
                     <button onClick={onClose} type="button" style={{ width:32, height:32, border:'none', borderRadius:8, background:'rgba(255,255,255,.18)', color:'#fff', cursor:'pointer', fontSize:15, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginLeft:4 }}>
                         <i className="fa fa-times" />
                     </button>

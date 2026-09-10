@@ -636,7 +636,7 @@ button:focus-visible,a:focus-visible{outline:2px solid rgba(255,138,0,0.55);outl
 
 /* ─── UserModal estilos ──────────────────────────────────── */
 .umodal-box{
-    width:min(560px,96%);max-height:90vh;background:#fff;
+    width:min(680px,96%);max-height:92vh;background:#fff;
     border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.25);
     display:flex;flex-direction:column;overflow:hidden;
     animation:modalIn .2s cubic-bezier(.4,0,.2,1);

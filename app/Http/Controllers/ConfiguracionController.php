@@ -49,8 +49,8 @@ class ConfiguracionController extends Controller
             if ($clave === 'cap_max_size_mb' && ((int)$valor < 1 || (int)$valor > 500)) {
                 return response()->json(['error' => 'El tamaño debe estar entre 1 y 500 MB'], 422);
             }
-            if ($clave === 'doc_max_versiones' && (int)$valor < 0) {
-                return response()->json(['error' => 'El número de versiones no puede ser negativo'], 422);
+            if ($clave === 'doc_max_versiones' && ((int)$valor !== 0 && (int)$valor < 2)) {
+                return response()->json(['error' => 'El número máximo de versiones debe ser 0 (sin límite) o al menos 2'], 422);
             }
             if (in_array($clave, ['doc_dias_vigencia_default', 'cap_dias_vigencia_default']) && (int)$valor < 1) {
                 return response()->json(['error' => 'La vigencia debe ser al menos 1 día'], 422);

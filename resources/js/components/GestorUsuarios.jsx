@@ -206,12 +206,6 @@ export default function GestorUsuarios() {
                                 <button onClick={() => handleCreate('usuario')} className="btn-orange" style={{ whiteSpace:'nowrap' }}>
                                     <i className="fa fa-user-plus" /> <span className="action-label">Nuevo usuario</span>
                                 </button>
-                                <button onClick={() => handleCreate('rol')} className="btn-outline" title="Nuevo rol" style={{ whiteSpace:'nowrap' }}>
-                                    <i className="fa fa-user-tag" /> <span className="action-label">Nuevo rol</span>
-                                </button>
-                                <button onClick={() => handleCreate('estado')} className="btn-outline" title="Nuevo estado" style={{ whiteSpace:'nowrap' }}>
-                                    <i className="fa fa-flag" /> <span className="action-label">Nuevo estado</span>
-                                </button>
                             </div>
                         </div>
 

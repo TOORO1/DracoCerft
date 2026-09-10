@@ -114,11 +114,15 @@
     {{-- HEADER --}}
     <div class="report-header">
         <div class="logo-cell">
-            <span style="font-size:22px; font-weight:900; letter-spacing:1px;">🐉 DracoCert</span>
+            @if(!empty($logoUrl))
+                <img src="{{ $logoUrl }}" alt="{{ $nombreEmpresa }}" style="max-height:48px; max-width:140px; object-fit:contain;" />
+            @else
+                <span style="font-size:20px; font-weight:900; letter-spacing:1px;">{{ $nombreEmpresa }}</span>
+            @endif
         </div>
         <div class="title-cell">
             <div class="report-title">Reporte de Cumplimiento ISO</div>
-            <div class="report-subtitle">Sistema de Gestión ISO 9001 · 14001 · 27001</div>
+            <div class="report-subtitle">{{ $nombreEmpresa }} · Sistema de Gestión ISO 9001 · 14001 · 27001</div>
             <div class="report-meta">Generado: {{ now()->locale('es')->isoFormat('dddd, D [de] MMMM [de] YYYY [–] HH:mm') }}</div>
         </div>
     </div>
@@ -275,8 +279,7 @@
 
     {{-- FOOTER --}}
     <div class="report-footer">
-        DracoCert — Universidad Antonio José Camacho · Sistema de Gestión ISO ·
-        Generado automáticamente el {{ now()->format('d/m/Y \a \l\a\s H:i') }}
+        {{ $piePagina }} · Generado el {{ now()->format('d/m/Y \a \l\a\s H:i') }}
     </div>
 
 </body>

@@ -81,6 +81,11 @@ class CapacitacionController extends Controller
             $diasVigencia = SystemConfig::get('cap_dias_vigencia_default', 365);
             $data['Fecha_Vencimiento'] = $data['Fecha_Vencimiento'] ?? Carbon::now()->addDays($diasVigencia)->toDateString();
             $data['Fecha_Realizacion'] = $data['Fecha_Realizacion'] ?? 'Sin realizar';
+            // Puntaje aprobatorio: si no se ingresa, default 60%
+            // (la columna DB es NOT NULL sin DEFAULT, así que siempre hay que enviar un valor)
+            $data['Puntaje'] = isset($data['Puntaje']) && $data['Puntaje'] !== null && $data['Puntaje'] !== ''
+                ? (int) $data['Puntaje']
+                : 60;
 
             if ($file = $request->file('archivo')) {
                 $upload = $this->uploadToCloudinary($file, 'capacitaciones_dracocerf');
@@ -254,5 +259,125 @@ class CapacitacionController extends Controller
 
         if (!$deleted) return response()->json(['error' => 'No encontrado'], 404);
         return response()->json(['ok' => true]);
+    }
+
+    // ─── POST /api/capacitaciones/{id}/recursos/{recursoId}/resultado ─────────
+    // Guarda el resultado de una evaluación para el usuario autenticado.
+    public function guardarResultado(Request $request, $id, $recursoId): JsonResponse
+    {
+        $request->validate([
+            'puntaje'   => 'required|integer|min:0|max:100',
+            'correctas' => 'required|integer|min:0',
+            'total'     => 'required|integer|min:0',
+            'respuestas'=> 'nullable|array',
+        ]);
+
+        $usuarioId = auth()->id();
+        if (!$usuarioId) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        // Verificar que el recurso pertenece a la capacitación
+        $recurso = DB::table('capacitacion_recurso')
+            ->where('id', $recursoId)
+            ->where('capacitacion_id', $id)
+            ->first();
+
+        if (!$recurso) {
+            return response()->json(['error' => 'Recurso no encontrado'], 404);
+        }
+
+        // Puntaje aprobatorio de la capacitación (default 60%)
+        $cap       = Capacitacion::find($id);
+        $pAprobatorio = $cap?->Puntaje ?? 60;
+        $aprobado  = $request->puntaje >= $pAprobatorio;
+
+        $resultadoId = DB::table('capacitacion_resultado')->insertGetId([
+            'capacitacion_id' => $id,
+            'recurso_id'      => $recursoId,
+            'usuario_id'      => $usuarioId,
+            'puntaje'         => $request->puntaje,
+            'correctas'       => $request->correctas,
+            'total'           => $request->total,
+            'aprobado'        => $aprobado,
+            'respuestas'      => json_encode($request->respuestas ?? []),
+            'created_at'      => now(),
+            'updated_at'      => now(),
+        ]);
+
+        return response()->json([
+            'ok'            => true,
+            'id'            => $resultadoId,
+            'aprobado'      => $aprobado,
+            'puntaje'       => $request->puntaje,
+            'pAprobatorio'  => $pAprobatorio,
+        ], 201);
+    }
+
+    // ─── GET /api/capacitaciones/{id}/mis-resultados ──────────────────────────
+    // Devuelve el mejor resultado de cada recurso (tipo formulario) para el
+    // usuario autenticado en esta capacitación.  Formato: { recurso_id: {...} }
+    public function misResultados($id): JsonResponse
+    {
+        $usuarioId = auth()->id();
+        if (!$usuarioId) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $filas = DB::table('capacitacion_resultado')
+            ->where('capacitacion_id', $id)
+            ->where('usuario_id', $usuarioId)
+            ->select('recurso_id',
+                DB::raw('MAX(puntaje)   AS mejor_puntaje'),
+                DB::raw('MAX(aprobado)  AS aprobado'),
+                DB::raw('COUNT(*)       AS intentos'),
+                DB::raw('MAX(created_at) AS ultima_fecha')
+            )
+            ->groupBy('recurso_id')
+            ->get();
+
+        $map = [];
+        foreach ($filas as $f) {
+            $map[$f->recurso_id] = [
+                'mejor_puntaje' => (int) $f->mejor_puntaje,
+                'aprobado'      => (bool) $f->aprobado,
+                'intentos'      => (int) $f->intentos,
+                'ultima_fecha'  => $f->ultima_fecha,
+            ];
+        }
+
+        return response()->json($map);
+    }
+
+    // ─── GET /api/capacitaciones/{id}/recursos/{recursoId}/resultado ──────────
+    // Devuelve el historial de intentos del usuario autenticado para este recurso.
+    public function obtenerResultados($id, $recursoId): JsonResponse
+    {
+        $usuarioId = auth()->id();
+        if (!$usuarioId) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $resultados = DB::table('capacitacion_resultado')
+            ->where('capacitacion_id', $id)
+            ->where('recurso_id', $recursoId)
+            ->where('usuario_id', $usuarioId)
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn($r) => [
+                'id'        => $r->id,
+                'puntaje'   => $r->puntaje,
+                'correctas' => $r->correctas,
+                'total'     => $r->total,
+                'aprobado'  => (bool) $r->aprobado,
+                'fecha'     => $r->created_at,
+            ]);
+
+        $cap = Capacitacion::find($id);
+
+        return response()->json([
+            'resultados'   => $resultados,
+            'pAprobatorio' => $cap?->Puntaje ?? 60,
+        ]);
     }
 }

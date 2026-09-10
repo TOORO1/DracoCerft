@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
@@ -41,9 +42,16 @@ class AuthController extends Controller
         }
 
         // Generar token plano, guardar hash en BD (los middleware esperan SHA256)
-        $plainToken = Str::random(60);
-        $user->api_token = hash('sha256', $plainToken);
-        $user->save();
+        // Usamos DB::table()->update() en vez de $user->save() para evitar
+        // actualizar todas las columnas y disparar todos los eventos Eloquent.
+        $plainToken  = Str::random(60);
+        $hashedToken = hash('sha256', $plainToken);
+
+        DB::table('usuario')
+            ->where('idUsuario', $user->idUsuario)
+            ->update(['api_token' => $hashedToken]);
+
+        $user->api_token = $hashedToken; // sincronizar modelo en memoria
 
         Auth::login($user);
         $request->session()->regenerate();

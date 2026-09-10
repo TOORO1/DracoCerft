@@ -106,6 +106,19 @@ class UsuarioController extends Controller
         return DB::transaction(function () use ($request, $id) {
             $usuario = Usuario::findOrFail($id);
 
+            // Evitar desactivar/eliminar al último Administrador activo
+            $nuevoEstado = (int) $request->Estado_idEstado;
+            if ($nuevoEstado !== 1 && $usuario->Estado_idEstado == 1) {
+                $rolActual = $usuario->roles->first();
+                if ($rolActual && $rolActual->Nombre_rol === 'Administrador') {
+                    if ($this->countActiveAdmins() <= 1) {
+                        return response()->json([
+                            'message' => 'No se puede desactivar: debe existir al menos un Administrador activo en el sistema.',
+                        ], 422);
+                    }
+                }
+            }
+
             // Cedula opcional en edición; si no viene, conservar valor actual
             if ($request->has('Cedula')) {
                 $cedula = $request->Cedula;
@@ -144,6 +157,18 @@ class UsuarioController extends Controller
             $usuario = Usuario::findOrFail($id);
             $rol     = Rol::findOrFail($request->rol_id);
 
+            // Evitar quitar el rol Administrador si es el último
+            $rolActual = $usuario->roles->first();
+            if ($rolActual && $rolActual->Nombre_rol === 'Administrador' && $rol->Nombre_rol !== 'Administrador') {
+                $adminsActivos = $this->countActiveAdmins();
+                if ($adminsActivos <= 1) {
+                    return response()->json([
+                        'ok'      => false,
+                        'message' => 'No se puede cambiar el rol: debe existir al menos un Administrador activo en el sistema.',
+                    ], 422);
+                }
+            }
+
             $usuario->roles()->sync([$rol->idRol => ['Fecha_Asignacion' => now()]]);
 
             ActivityLog::record('cambiar_rol', 'usuarios', "Rol de {$usuario->Nombre_Usuario} cambiado a {$rol->Nombre_rol}");
@@ -159,9 +184,30 @@ class UsuarioController extends Controller
     public function destroy($id)
     {
         $usuario = Usuario::findOrFail($id);
+
+        // Evitar eliminar el último Administrador activo
+        $rolActual = $usuario->roles->first();
+        if ($rolActual && $rolActual->Nombre_rol === 'Administrador' && $usuario->Estado_idEstado == 1) {
+            if ($this->countActiveAdmins() <= 1) {
+                return response()->json([
+                    'message' => 'No se puede eliminar: debe existir al menos un Administrador activo en el sistema.',
+                ], 422);
+            }
+        }
+
         $usuario->Estado_idEstado = 3; // Eliminación lógica (3 = Eliminado)
         $usuario->save();
         ActivityLog::record('eliminar_usuario', 'usuarios', "Usuario eliminado: {$usuario->Nombre_Usuario}");
         return response()->json(['message' => 'Usuario eliminado lógicamente']);
+    }
+
+    /**
+     * Cuenta cuántos administradores tienen estado activo (Estado_idEstado = 1).
+     */
+    private function countActiveAdmins(): int
+    {
+        return Usuario::where('Estado_idEstado', 1)
+            ->whereHas('roles', fn($q) => $q->where('Nombre_rol', 'Administrador'))
+            ->count();
     }
 }

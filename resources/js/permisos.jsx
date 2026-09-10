@@ -5,6 +5,9 @@ import { createRoot } from 'react-dom/client';
 import axios from 'axios';
 import Permisos from './components/Permisos.jsx';
 import '../css/Styles.css';
+import { initInactivityTimer } from './inactivityTimer.js';
+
+initInactivityTimer();
 
 axios.defaults.withCredentials = true;
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';

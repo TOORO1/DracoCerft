@@ -5,6 +5,9 @@ import { createRoot } from 'react-dom/client';
 import '../css/Styles.css';
 import axios from 'axios';
 import Auditoria from './components/Auditoria.jsx';
+import { initInactivityTimer } from './inactivityTimer.js';
+
+initInactivityTimer();
 
 axios.defaults.withCredentials = true;
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';

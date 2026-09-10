@@ -64,11 +64,15 @@
     {{-- HEADER --}}
     <div class="report-header">
         <div class="logo-cell">
-            <span style="font-size:22px; font-weight:900; letter-spacing:1px;">🐉 DracoCert</span>
+            @if(!empty($logoUrl))
+                <img src="{{ $logoUrl }}" alt="{{ $nombreEmpresa }}" style="max-height:48px; max-width:140px; object-fit:contain;" />
+            @else
+                <span style="font-size:20px; font-weight:900; letter-spacing:1px;">{{ $nombreEmpresa }}</span>
+            @endif
         </div>
         <div class="title-cell">
             <div class="report-title">Reporte de Hallazgos de Auditoría</div>
-            <div class="report-subtitle">Sistema de Gestión ISO – Módulo de Auditoría</div>
+            <div class="report-subtitle">{{ $nombreEmpresa }} · Sistema de Gestión ISO – Módulo de Auditoría</div>
             <div class="report-meta">Generado: {{ now()->locale('es')->isoFormat('dddd, D [de] MMMM [de] YYYY [–] HH:mm') }}</div>
         </div>
     </div>

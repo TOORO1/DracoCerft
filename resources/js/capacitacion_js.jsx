@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client';
 import '../css/Styles.css';
 import axios from 'axios';
 import Capacitaciones from './components/Capacitaciones.jsx';
+import { initInactivityTimer } from './inactivityTimer.js';
+
+initInactivityTimer();
 
 console.log('[vite] cargando capcacitacion_js.jsx');
 axios.defaults.withCredentials = true;
