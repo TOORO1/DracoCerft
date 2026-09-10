@@ -72,9 +72,16 @@ class DocumentoFlowTest extends DracoCertTestCase
         $respuesta->assertOk()
                   ->assertJson(['success' => true]);
 
-        $this->assertDatabaseMissing('documento', [
+        // Soft delete: el registro sigue en la BD pero con deleted_at establecido
+        $this->assertDatabaseHas('documento', [
             'idDocumento' => $documento->idDocumento,
         ]);
+        $this->assertNotNull(
+            \Illuminate\Support\Facades\DB::table('documento')
+                ->where('idDocumento', $documento->idDocumento)
+                ->value('deleted_at'),
+            'deleted_at debe estar establecido tras el soft delete'
+        );
     }
 
     /* ──────────────────────────────────────────────────────────────
