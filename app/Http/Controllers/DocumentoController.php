@@ -39,6 +39,7 @@ class DocumentoController extends Controller
 
         $query = DB::table('documento')
             ->leftJoin('version', 'documento.Version_idVersion', '=', 'version.idVersion')
+            ->whereNull('documento.deleted_at')
             ->select('documento.*', 'version.numero_Version', 'version.nombre_archivo');
 
         // ── Búsqueda por texto (nombre del documento)
@@ -104,6 +105,7 @@ class DocumentoController extends Controller
 
         foreach ($folders as &$f) {
             $f['count'] = DB::table('documento')
+                ->whereNull('deleted_at')
                 ->where(function ($q) use ($f) {
                     $q->where('Ruta', 'like', "%documentos/{$f['id']}/%")
                       ->orWhere('Ruta', 'like', "%/{$f['id']}/%");
@@ -122,6 +124,7 @@ class DocumentoController extends Controller
             ->leftJoin('version', 'documento.Version_idVersion', '=', 'version.idVersion')
             ->select('documento.*', 'version.numero_Version')
             ->where('documento.idDocumento', $id)
+            ->whereNull('documento.deleted_at')
             ->first();
 
         if (! $doc) {
@@ -221,10 +224,11 @@ class DocumentoController extends Controller
                 "Documento subido: {$request->input('Nombre_Doc')} (carpeta: {$folder})"
             );
 
-            // Invalidar cache de notificaciones para que el contador se actualice de inmediato
+            // Invalidar caches para que el dashboard/contador se actualice de inmediato
             if ($userId) {
                 DashboardController::clearNotificationsCache((int) $userId);
             }
+            DashboardController::clearStatsCache();
 
             $doc = DB::table('documento')->where('idDocumento', $docId)->first();
             return response()->json($doc, 201);
@@ -250,7 +254,7 @@ class DocumentoController extends Controller
         ]);
 
         try {
-            $doc = DB::table('documento')->where('idDocumento', $id)->first();
+            $doc = DB::table('documento')->where('idDocumento', $id)->whereNull('deleted_at')->first();
             if (! $doc) {
                 return response()->json(['error' => 'Documento no encontrado'], 404);
             }
@@ -271,19 +275,20 @@ class DocumentoController extends Controller
             $nextVersion = ($lastVersion ?? 1) + 1;
 
             // ── Aplicar límite de versiones configurado ───────────────────────
-            $maxVersiones = SystemConfig::get('doc_max_versiones', 10);
-            if ($maxVersiones > 0) {
+            $maxVersiones = (int) SystemConfig::get('doc_max_versiones', 10);
+            if ($maxVersiones >= 2) {
                 $totalVersiones = DB::table('version')->where('documento_id', $id)->count();
                 if ($totalVersiones >= $maxVersiones) {
-                    // Eliminar la versión más antigua de Cloudinary y la BD
+                    // Eliminar la versión más antigua que NO sea la actualmente referenciada
                     $oldest = DB::table('version')
                         ->where('documento_id', $id)
+                        ->where('idVersion', '!=', $doc->Version_idVersion)
                         ->orderBy('numero_Version', 'asc')
                         ->first();
-                    if ($oldest && ! empty($oldest->public_id)) {
-                        $this->deleteFromCloudinary($oldest->public_id, $oldest->resource_type ?? 'raw');
-                    }
                     if ($oldest) {
+                        if (! empty($oldest->public_id)) {
+                            $this->deleteFromCloudinary($oldest->public_id, $oldest->resource_type ?? 'raw');
+                        }
                         DB::table('version')->where('idVersion', $oldest->idVersion)->delete();
                     }
                 }
@@ -338,25 +343,19 @@ class DocumentoController extends Controller
     public function destroy($id)
     {
         try {
-            $doc = DB::table('documento')->where('idDocumento', $id)->first();
+            $doc = DB::table('documento')->where('idDocumento', $id)->whereNull('deleted_at')->first();
             if (! $doc) {
                 return response()->json(['error' => 'Documento no encontrado'], 404);
             }
 
-            // Eliminar archivos de Cloudinary para cada versión
-            $versiones = DB::table('version')->where('documento_id', $id)->get();
-            foreach ($versiones as $v) {
-                if (! empty($v->public_id)) {
-                    $this->deleteFromCloudinary($v->public_id, $v->resource_type ?? 'raw');
-                }
-            }
+            // Borrado lógico: se conserva el archivo en Cloudinary para posible restauración.
+            // Un proceso de purga definitiva deberá borrar Cloudinary y la fila cuando se decida.
+            DB::table('documento')->where('idDocumento', $id)->update(['deleted_at' => now()]);
 
-            DB::table('documento')->where('idDocumento', $id)->delete();
-            DB::table('version')->where('documento_id', $id)->delete();
+            ActivityLog::record('delete_doc', 'documentos', "Documento enviado a papelera: {$doc->Nombre_Doc}");
+            DashboardController::clearStatsCache();
 
-            ActivityLog::record('delete_doc', 'documentos', "Documento eliminado: {$doc->Nombre_Doc}");
-
-            return response()->json(['success' => true, 'message' => 'Documento eliminado correctamente.']);
+            return response()->json(['success' => true, 'message' => 'Documento enviado a la papelera correctamente.']);
 
         } catch (\Throwable $e) {
             Log::error('DocumentoController@destroy: ' . $e->getMessage());
@@ -364,10 +363,33 @@ class DocumentoController extends Controller
         }
     }
 
+    // ─── API: Papelera — documentos con soft delete (solo Administrador) ─────
+
+    public function trash()
+    {
+        $docs = DB::table('documento')
+            ->leftJoin('version', 'documento.Version_idVersion', '=', 'version.idVersion')
+            ->whereNotNull('documento.deleted_at')
+            ->select('documento.*', 'version.numero_Version', 'version.nombre_archivo')
+            ->orderBy('documento.deleted_at', 'desc')
+            ->get()
+            ->map(function ($d) {
+                $d->folder = $this->detectFolder($d->Ruta ?? '');
+                return $d;
+            });
+
+        return response()->json($docs);
+    }
+
     // ─── API: Descargar versión más reciente ──────────────────────────────────
 
     public function download(int $id)
     {
+        $docExists = DB::table('documento')->where('idDocumento', $id)->whereNull('deleted_at')->exists();
+        if (! $docExists) {
+            return response()->json(['error' => 'Archivo no disponible'], 404);
+        }
+
         $version = DB::table('version')
             ->where('documento_id', $id)
             ->orderBy('numero_Version', 'desc')
@@ -387,6 +409,11 @@ class DocumentoController extends Controller
 
     public function downloadVersion(int $docId, int $versionId)
     {
+        $docExists = DB::table('documento')->where('idDocumento', $docId)->whereNull('deleted_at')->exists();
+        if (! $docExists) {
+            return response()->json(['error' => 'Archivo no disponible'], 404);
+        }
+
         $version = DB::table('version')
             ->where('idVersion', $versionId)
             ->where('documento_id', $docId)

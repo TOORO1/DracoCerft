@@ -11,6 +11,7 @@ use App\Exports\HallazgosExport;
 use App\Exports\CumplimientoExport;
 use Illuminate\Support\Collection;
 use App\Models\ActivityLog;
+use App\Models\SystemConfig;
 
 class ReporteController extends Controller
 {
@@ -88,11 +89,13 @@ class ReporteController extends Controller
                 $total = DB::table('documento_has_norma')
                     ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
                     ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
                     ->count();
 
                 $vigente = DB::table('documento_has_norma')
                     ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
                     ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
                     ->where(function ($q) use ($today) {
                         $q->whereNull('documento.Fecha_Caducidad')
                           ->orWhere('documento.Fecha_Caducidad', '>', $today);
@@ -101,6 +104,7 @@ class ReporteController extends Controller
                 $porVencer = DB::table('documento_has_norma')
                     ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
                     ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
                     ->whereBetween('documento.Fecha_Caducidad', [$today, $in30])
                     ->count();
 
@@ -135,6 +139,7 @@ class ReporteController extends Controller
             ->leftJoin('tipo_documento', 'tipo_documento.idTipo_Documento', '=', 'documento.Tipo_Documento_idTipo_Documento')
             ->leftJoin('documento_has_norma', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
             ->leftJoin('norma', 'norma.idNorma', '=', 'documento_has_norma.Norma_idNorma')
+            ->whereNull('documento.deleted_at')
             ->select(
                 'documento.idDocumento',
                 'documento.Nombre_Doc',
@@ -203,9 +208,14 @@ class ReporteController extends Controller
 
         ActivityLog::record('Exportar PDF', 'Reportes', 'Generó reporte PDF de cumplimiento ISO');
 
+        $nombreEmpresa  = SystemConfig::get('nombre_empresa',     'DracoCert');
+        $logoUrl        = SystemConfig::get('reporte_logo_url',   '');
+        $piePagina      = SystemConfig::get('reporte_pie_pagina', 'Generado por DracoCert — Software de Gestión ISO');
+
         $pdf = Pdf::loadView('reports.compliance_pdf', compact(
             'isoData', 'documentos', 'docsExpiring',
-            'totalDocs', 'docsVigentes', 'docsPorVencer', 'docsCaducados', 'globalCompliance'
+            'totalDocs', 'docsVigentes', 'docsPorVencer', 'docsCaducados', 'globalCompliance',
+            'nombreEmpresa', 'logoUrl', 'piePagina'
         ))->setPaper('a4', 'portrait');
 
         return $pdf->download('Reporte_Cumplimiento_ISO_' . now()->format('Y-m-d') . '.pdf');
@@ -227,8 +237,13 @@ class ReporteController extends Controller
 
         ActivityLog::record('Exportar PDF', 'Reportes', 'Generó reporte PDF de hallazgos de auditoría');
 
+        $nombreEmpresa  = SystemConfig::get('nombre_empresa',     'DracoCert');
+        $logoUrl        = SystemConfig::get('reporte_logo_url',   '');
+        $piePagina      = SystemConfig::get('reporte_pie_pagina', 'Generado por DracoCert — Software de Gestión ISO');
+
         $pdf = Pdf::loadView('reports.hallazgos_pdf', compact(
-            'hallazgos', 'auditorias', 'porPrioridad'
+            'hallazgos', 'auditorias', 'porPrioridad',
+            'nombreEmpresa', 'logoUrl', 'piePagina'
         ))->setPaper('a4', 'portrait');
 
         return $pdf->download('Reporte_Hallazgos_' . now()->format('Y-m-d') . '.pdf');

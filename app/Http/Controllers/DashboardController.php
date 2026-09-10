@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -19,25 +20,38 @@ class DashboardController extends Controller
      ───────────────────────────────────────────────────────────── */
     public function stats()
     {
+        // Cache 2 minutos: el dashboard se recarga en cada visita pero los datos
+        // cambian raramente en ese intervalo. Se invalida al crear/eliminar docs.
+        $data = Cache::remember('dashboard_stats_global', 120, function () {
+            return $this->buildStats();
+        });
+        return response()->json($data);
+    }
+
+    private function buildStats(): array
+    {
         $today = now()->toDateString();
         $in30  = now()->addDays(30)->toDateString();
 
         /* ── KPIs ────────────────────────────────────────────── */
-        $totalDocumentos     = DB::table('documento')->count();
+        $totalDocumentos     = DB::table('documento')->whereNull('deleted_at')->count();
         $totalUsuarios       = DB::table('usuario')->where('Estado_idEstado', '!=', 3)->count();
         $totalCapacitaciones = DB::table('capacitacion')->count();
         $hallazgosPendientes = DB::table('hallazgos')->count();
 
         $docsVigentes  = DB::table('documento')
+            ->whereNull('deleted_at')
             ->where(function ($q) use ($today) {
                 $q->whereNull('Fecha_Caducidad')->orWhere('Fecha_Caducidad', '>', $today);
             })->count();
 
         $docsPorVencer = DB::table('documento')
+            ->whereNull('deleted_at')
             ->whereBetween('Fecha_Caducidad', [$today, $in30])
             ->count();
 
         $docsCaducados = DB::table('documento')
+            ->whereNull('deleted_at')
             ->whereNotNull('Fecha_Caducidad')
             ->where('Fecha_Caducidad', '<', $today)
             ->count();
@@ -81,10 +95,14 @@ class DashboardController extends Controller
 
                 // Datos de documentos (para mostrar como info adicional)
                 $totalDocs = DB::table('documento_has_norma')
-                    ->where('Norma_idNorma', $norma->idNorma)->count();
+                    ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
+                    ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
+                    ->count();
                 $vigenteDocs = DB::table('documento_has_norma')
                     ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
                     ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
                     ->where(function ($q) use ($today) {
                         $q->whereNull('documento.Fecha_Caducidad')
                           ->orWhere('documento.Fecha_Caducidad', '>', $today);
@@ -112,11 +130,13 @@ class DashboardController extends Controller
                 $total = DB::table('documento_has_norma')
                     ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
                     ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
                     ->count();
 
                 $vigente = DB::table('documento_has_norma')
                     ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
                     ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
                     ->where(function ($q) use ($today) {
                         $q->whereNull('documento.Fecha_Caducidad')
                           ->orWhere('documento.Fecha_Caducidad', '>', $today);
@@ -125,6 +145,7 @@ class DashboardController extends Controller
                 $porVencer = DB::table('documento_has_norma')
                     ->join('documento', 'documento.idDocumento', '=', 'documento_has_norma.Documento_idDocumento')
                     ->where('documento_has_norma.Norma_idNorma', $norma->idNorma)
+                    ->whereNull('documento.deleted_at')
                     ->whereBetween('documento.Fecha_Caducidad', [$today, $in30])
                     ->count();
 
@@ -168,6 +189,7 @@ class DashboardController extends Controller
 
         /* ── Documentos por vencer (próximos 30 días) ────────── */
         $docsExpiring = DB::table('documento')
+            ->whereNull('deleted_at')
             ->whereBetween('Fecha_Caducidad', [$today, $in30])
             ->select('idDocumento', 'Nombre_Doc', 'Fecha_Caducidad')
             ->orderBy('Fecha_Caducidad')
@@ -194,6 +216,7 @@ class DashboardController extends Controller
         /* ── Documentos recientes ─────────────────────────────── */
         $docsRecientes = DB::table('documento')
             ->leftJoin('version', 'documento.Version_idVersion', '=', 'version.idVersion')
+            ->whereNull('documento.deleted_at')
             ->select(
                 'documento.idDocumento', 'documento.Nombre_Doc',
                 'documento.Fecha_creacion', 'documento.Ruta',
@@ -211,7 +234,7 @@ class DashboardController extends Controller
                 'version' => $d->numero_Version ? number_format($d->numero_Version, 1) : '1.0',
             ]);
 
-        return response()->json([
+        return [
             'kpis' => [
                 'documentos'     => $totalDocumentos,
                 'usuarios'       => $totalUsuarios,
@@ -227,8 +250,8 @@ class DashboardController extends Controller
             'docs_expiring'  => $docsExpiring,
             'logs_recientes' => $logsRecientes,
             'docs_recientes' => $docsRecientes,
-        ]);
-    }
+        ];
+    } // fin buildStats()
 
     /* ─────────────────────────────────────────────────────────────
      |  Notificaciones — bell count para el Header
@@ -297,5 +320,14 @@ class DashboardController extends Controller
     public static function clearNotificationsCache(int $userId): void
     {
         Cache::forget("notifications_user_{$userId}");
+    }
+
+    /**
+     * Invalida el cache global de stats del dashboard.
+     * Llamar desde DocumentoController, AuditoriaController, etc. tras mutaciones.
+     */
+    public static function clearStatsCache(): void
+    {
+        Cache::forget('dashboard_stats_global');
     }
 }
